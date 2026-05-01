@@ -41,7 +41,7 @@ load_dotenv()
 console = Console()
 app = typer.Typer(
     name="trading-bot",
-    help="🤖 Binance Futures Testnet Trading Bot — place MARKET, LIMIT, and STOP_LIMIT orders.",
+    help="Binance Futures Testnet Trading Bot — place MARKET, LIMIT, and STOP_LIMIT orders.",
     add_completion=False,
 )
 
@@ -69,7 +69,7 @@ def _print_summary(
         rows.append(f"[bold]Time in Force[/bold]: {tif}")
 
     console.print(
-        Panel("\n".join(rows), title="📋 Order Request Summary", border_style="cyan")
+        Panel("\n".join(rows), title="Order Request Summary", border_style="cyan")
     )
 
 
@@ -114,10 +114,10 @@ def place_order(
 
     if not api_key or not api_secret:
         console.print(
-            "[bold red]❌ Missing credentials.[/bold red] "
+            "[bold red]ERROR: Missing credentials.[/bold red] "
             "Set BINANCE_API_KEY and BINANCE_API_SECRET in your .env file."
         )
-        logger.error("Missing API credentials — check .env file.")
+        logger.error("Missing API credentials - check .env file.")
         raise typer.Exit(code=1)
 
     # ── Validation ────────────────────────────────────────────────── #
@@ -130,7 +130,7 @@ def place_order(
         stop_price = validate_stop_price(stop_price, order_type)
         tif        = validate_tif(tif)
     except typer.BadParameter as exc:
-        console.print(f"[bold red]❌ Validation error:[/bold red] {exc}")
+        console.print(f"[bold red]Validation error:[/bold red] {exc}")
         logger.error("Validation failed: %s", exc)
         raise typer.Exit(code=1)
 
@@ -173,19 +173,19 @@ def place_order(
 
     except requests.exceptions.ConnectionError:
         console.print(
-            "[bold red]❌ Network error:[/bold red] "
+            "[bold red]Network error:[/bold red] "
             "Cannot reach Binance Testnet. Check your internet connection."
         )
         logger.error("Network connection failed.")
         raise typer.Exit(code=1)
 
     except requests.exceptions.Timeout:
-        console.print("[bold red]❌ Timeout:[/bold red] The request took too long and was aborted.")
+        console.print("[bold red]Timeout:[/bold red] The request took too long and was aborted.")
         logger.error("Request timed out.")
         raise typer.Exit(code=1)
 
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[bold red]❌ Unexpected error:[/bold red] {exc}")
+        console.print(f"[bold red]Unexpected error:[/bold red] {exc}")
         logger.exception("Unexpected error: %s", exc)
         raise typer.Exit(code=1)
 

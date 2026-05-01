@@ -6,7 +6,9 @@ the actual HTTP call to BinanceClient.
 import logging
 from typing import Any, Dict, Optional
 
-from bot.client import BASE_URL, ORDER_ENDPOINT, BinanceClient
+from bot.client import BinanceClient
+
+ORDER_ENDPOINT = "/api/v3/order"
 
 logger = logging.getLogger("trading_bot.orders")
 
@@ -75,7 +77,7 @@ def place_stop_limit_order(
     params: Dict[str, Any] = {
         "symbol": symbol,
         "side": side,
-        "type": "STOP",          # Binance Futures uses 'STOP' for stop-limit
+        "type": "STOP_LOSS_LIMIT",   # Spot testnet stop-limit type
         "quantity": quantity,
         "price": price,
         "stopPrice": stop_price,
@@ -105,7 +107,7 @@ def format_order_response(response: Dict[str, Any]) -> str:
     lines = [
         "",
         _DIVIDER,
-        "  ✅  ORDER PLACED SUCCESSFULLY",
+        "  [OK] ORDER PLACED SUCCESSFULLY",
         _DIVIDER,
         _field("Order ID",     response.get("orderId")),
         _field("Symbol",       response.get("symbol")),
@@ -127,7 +129,7 @@ def format_order_response(response: Dict[str, Any]) -> str:
 def format_error(code: Any, msg: str) -> str:
     return (
         f"\n{_DIVIDER}\n"
-        f"  ❌  ORDER FAILED\n"
+        f"  [FAILED] ORDER FAILED\n"
         f"{_DIVIDER}\n"
         f"  Error Code : {code}\n"
         f"  Message    : {msg}\n"

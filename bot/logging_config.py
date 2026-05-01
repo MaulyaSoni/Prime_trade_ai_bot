@@ -37,5 +37,5 @@ def setup_logging() -> logging.Logger:
     logger.addHandler(fh)
     logger.addHandler(ch)
 
-    logger.info(f"Logging initialised → {log_filename}")
+    logger.info(f"Logging initialised -> {log_filename}")
     return logger

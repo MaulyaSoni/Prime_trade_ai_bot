@@ -8,8 +8,8 @@ import requests
 
 logger = logging.getLogger("trading_bot.client")
 
-BASE_URL = "https://testnet.binancefuture.com"
-ORDER_ENDPOINT = "/fapi/v1/order"
+BASE_URL = "https://testnet.binance.vision"
+ORDER_ENDPOINT = "/api/v3/order"
 
 
 class BinanceClient:
