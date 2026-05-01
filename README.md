@@ -11,6 +11,9 @@ This project fulfills all core requirements and tackles multiple **bonus** objec
 - ✅ **Core Requirement 3:** Input efficiently validated via `typer` and custom `validators.py`.
 - ✅ **Core Requirement 4:** Clean console output formatted with `rich` to show summary, response, and success/failure cleanly.
 - ✅ **Core Requirement 5:** Structured architecture (`cli.py` separate from `bot/client.py`), and dedicated file/console logging.
+- 🚀 **Advanced Tier 1:** Live Prices, Balances, and Open Orders directly from CLI.
+- 🚀 **Advanced Tier 2:** TWAP execution algorithm added to slice single large orders across chunks.
+- 🚀 **Advanced Tier 3:** Interactive TUI Menu for step-by-step order placement, plus a Trade Journal (`trade_journal.csv`) to automatically log trade details and PnL framing.
 - 🚀 **Bonus 1:** Implemented a third order type: `STOP_LIMIT` (`STOP`).
 - 🚀 **Bonus 2:** Enhanced CLI UX using Typer and Rich with colored tables, explicit validation hints, and help menus.
 - 📦 **Deliverables included:** Full source code, this README, requirements list, and timestamped log files in the `/logs` directory demonstrating successful limits/markets.
@@ -103,7 +106,14 @@ python cli.py --symbol ETHUSDT --side SELL --type LIMIT --quantity 0.01 --price 
 ```powershell
 python cli.py --symbol ETHUSDT --side BUY --type STOP_LIMIT --quantity 0.01 --stop-price 3000 --price 3050
 ```
+### 7. View Live Price & Auto Logs (Trade Journal) 
+Every executed order, regardless of type, is inherently appended to the `trade_journal.csv` within the project. 
 
+### 8. Use TWAP (Time-Weighted Average Price) algorithmic execution (Tier 2)
+Splits your large order (e.g. 0.02 BTC) into 2 chunks of 0.01, placed 10 seconds apart.
+```powershell
+python cli.py twap --symbol BTCUSDT --side BUY --quantity 0.02 --chunks 2 --interval 10
+```
 ---
 
 ## 📝 Logs

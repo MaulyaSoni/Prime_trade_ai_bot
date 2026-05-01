@@ -10,6 +10,9 @@ Usage:
 """
 import os
 import sys
+import time
+import csv
+from datetime import datetime
 from typing import Optional
 
 import requests
@@ -45,6 +48,29 @@ app = typer.Typer(
     add_completion=False,
 )
 
+def _log_trade_journal(res: dict) -> None:
+    """Tier 3: Trade journal — logs every executed order to a local CSV with PnL tracking hints."""
+    try:
+        file_exists = os.path.isfile("trade_journal.csv")
+        with open("trade_journal.csv", mode="a", newline="") as csvfile:
+            fieldnames = ["time", "orderId", "symbol", "side", "type", "origQty", "price", "status"]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow({
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "orderId": res.get("orderId", ""),
+                "symbol": res.get("symbol", ""),
+                "side": res.get("side", ""),
+                "type": res.get("type", ""),
+                "origQty": res.get("origQty", ""),
+                "price": res.get("price", ""),
+                "status": res.get("status", ""),
+            })
+    except Exception as e:
+        console.print(f"[yellow]Could not log to trade journal: {e}[/yellow]")
+
+
 
 def _print_summary(
     symbol: str,
@@ -73,7 +99,73 @@ def _print_summary(
     )
 
 
-@app.command()
+@app.command("balance")
+def get_balance() -> None:
+    """Fetch and display USDT and BTC balances from Binance Testnet."""
+    logger = setup_logging()
+    load_dotenv()
+    api_key = os.getenv("BINANCE_API_KEY", "").strip()
+    api_secret = os.getenv("BINANCE_API_SECRET", "").strip()
+
+    if not api_key or not api_secret:
+        console.print("[bold red]ERROR: Missing credentials.[/bold red]")
+        raise typer.Exit(code=1)
+
+    client = BinanceClient(api_key, api_secret)
+    try:
+        data = client.get_signed("/api/v3/account")
+        console.print(f"\n[bold cyan]Account Balances (Testnet)[/bold cyan]")
+        console.print("──────────────────────────────────────────────────")
+        for asset in data.get("balances", []):
+            if asset["asset"] in ["USDT", "BTC", "ETH"]:
+                console.print(f"[bold]{asset['asset']:>6}[/bold]: {float(asset['free']):.4f} (Locked: {float(asset['locked']):.4f})")
+    except Exception as e:
+        console.print(f"[bold red]Failed to fetch balance: {e}[/bold red]")
+
+
+@app.command("price")
+def get_price(symbol: str = typer.Argument(..., help="Symbol (e.g. BTCUSDT)")) -> None:
+    """Get the current market price for a symbol."""
+    logger = setup_logging()
+    client = BinanceClient("", "") # Public endpoint, no keys needed
+    try:
+        data = client.get_public("/api/v3/ticker/price", {"symbol": symbol.upper()})
+        price = float(data['price'])
+        console.print(f"\n📈 [bold yellow]{symbol.upper()}[/bold yellow] Latest Price: [bold green]${price:,.2f}[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Failed to fetch price: {e}[/bold red]")
+
+
+@app.command("open-orders")
+def get_open_orders(
+    symbol: Optional[str] = typer.Option(None, "--symbol", "-s", help="Filter by symbol")
+) -> None:
+    """List all open orders on your testnet account."""
+    logger = setup_logging()
+    load_dotenv()
+    api_key = os.getenv("BINANCE_API_KEY", "").strip()
+    api_secret = os.getenv("BINANCE_API_SECRET", "").strip()
+
+    client = BinanceClient(api_key, api_secret)
+    try:
+        params = {"symbol": symbol.upper()} if symbol else {}
+        data = client.get_signed("/api/v3/openOrders", params)
+        console.print(f"\n[bold cyan]Open Orders (Testnet)[/bold cyan]")
+        console.print("──────────────────────────────────────────────────")
+        if not data:
+            console.print("[yellow]No open orders found.[/yellow]")
+            return
+        for idx, order in enumerate(data, 1):
+            console.print(
+                f"{idx}. [bold]{order['symbol']}[/bold] | {order['side']} | {order['type']} | "
+                f"Qty: {order['origQty']} | Price: {order.get('price', 'MARKET')} | "
+                f"Status: {order['status']} | ID: {order['orderId']}"
+            )
+    except Exception as e:
+        console.print(f"[bold red]Failed to fetch open orders: {e}[/bold red]")
+
+
+@app.command("order")
 def place_order(
     symbol: str = typer.Option(
         ..., "--symbol", "-s",
@@ -109,6 +201,7 @@ def place_order(
     logger = setup_logging()
 
     # ── Credentials ──────────────────────────────────────────────── #
+    load_dotenv()
     api_key = os.getenv("BINANCE_API_KEY", "").strip()
     api_secret = os.getenv("BINANCE_API_SECRET", "").strip()
 
@@ -158,6 +251,8 @@ def place_order(
                 client, symbol, side, quantity, price, stop_price, tif  # type: ignore[arg-type]
             )
 
+        _log_trade_journal(response)
+
     except requests.exceptions.HTTPError as exc:
         error_body: dict = {}
         if exc.response is not None:
@@ -199,6 +294,71 @@ def place_order(
         response.get("avgPrice"),
     )
 
+
+@app.command("twap")
+def twap_order(
+    symbol: str = typer.Option(..., "--symbol", "-s", help="Symbol (e.g. BTCUSDT)"),
+    side: str = typer.Option(..., "--side", help="BUY or SELL"),
+    total_qty: float = typer.Option(..., "--quantity", "-q", help="Total quantity to trade"),
+    chunks: int = typer.Option(..., "--chunks", "-c", help="Number of chunks to split the order into"),
+    interval_sec: int = typer.Option(..., "--interval", "-i", help="Time between chunks in seconds"),
+) -> None:
+    """TWAP execution — splits a large MARKET order into equal chunks over a time window."""
+    logger = setup_logging()
+    load_dotenv()
+    api_key = os.getenv("BINANCE_API_KEY", "").strip()
+    api_secret = os.getenv("BINANCE_API_SECRET", "").strip()
+
+    if not api_key or not api_secret:
+        console.print("[bold red]ERROR: Missing credentials.[/bold red]")
+        raise typer.Exit(code=1)
+
+    chunk_qty = total_qty / chunks
+    console.print(f"[bold magenta]Starting TWAP Execution...[/bold magenta]")
+    console.print(f"Total: {total_qty} {symbol} • Chunks: {chunks} • Qty per chunk: {chunk_qty} • Interval: {interval_sec}s\n")
+
+    client = BinanceClient(api_key, api_secret)
+    
+    for i in range(1, chunks + 1):
+        console.print(f"[cyan]Executing chunk {i}/{chunks}...[/cyan]")
+        try:
+            from bot.orders import place_market_order, format_order_response
+            res = place_market_order(client, symbol, side, chunk_qty)
+            _log_trade_journal(res)
+            console.print(format_order_response(res))
+            if i < chunks:
+                time.sleep(interval_sec)
+        except Exception as str_exc:
+            console.print(f"[bold red]Chunk {i} failed: {str_exc}[/bold red]")
+            break
+    console.print("[bold green]TWAP Execution Complete.[/bold green]")
+
+
+@app.command("interactive")
+def interactive_mode():
+    """Tier 3: Interactive menu mode with step-by-step prompts."""
+    console.print("[bold cyan]=== Interactive Trading Mode ===[/bold cyan]")
+    
+    symbol = typer.prompt("Enter Symbol", default="BTCUSDT").upper()
+    side = typer.prompt("Side (BUY/SELL)", default="BUY").upper()
+    order_type = typer.prompt("Order Type (MARKET/LIMIT/STOP_LIMIT)", default="MARKET").upper()
+    quantity = typer.prompt("Quantity", type=float)
+    
+    price = None
+    if order_type in ["LIMIT", "STOP_LIMIT"]:
+        price = typer.prompt("Limit Price", type=float)
+        
+    stop_price = None
+    if order_type == "STOP_LIMIT":
+        stop_price = typer.prompt("Stop Price", type=float)
+        
+    console.print(f"\n[bold]Ready to place {order_type} {side} order for {quantity} {symbol}.[/bold]")
+    confirm = typer.confirm("Execute this trade?")
+    
+    if confirm:
+        place_order(symbol=symbol, side=side, order_type=order_type, quantity=quantity, price=price, stop_price=stop_price, tif="GTC")
+    else:
+        console.print("[yellow]Trade cancelled.[/yellow]")
 
 if __name__ == "__main__":
     app()

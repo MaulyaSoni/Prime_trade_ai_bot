@@ -41,11 +41,40 @@ class BinanceClient:
 
     def _safe_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Return params without signature — safe to log."""
+        if not params:
+            return {}
         return {k: v for k, v in params.items() if k != "signature"}
 
     # ------------------------------------------------------------------ #
     #  Public interface                                                    #
     # ------------------------------------------------------------------ #
+
+    def get_public(self, endpoint: str, params: Dict[str, Any] = None) -> Any:
+        url = f"{BASE_URL}{endpoint}"
+        logger.debug("GET %s | params: %s", url, params)
+        try:
+            response = self.session.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as exc:
+            logger.error("HTTP GET failed %s | exc: %s", url, exc)
+            raise
+
+    def get_signed(self, endpoint: str, params: Dict[str, Any] = None) -> Any:
+        params = params or {}
+        params["timestamp"] = self._timestamp()
+        params["signature"] = self._sign(params)
+
+        url = f"{BASE_URL}{endpoint}"
+        logger.debug("GET %s | params: %s", url, self._safe_params(params))
+        try:
+            response = self.session.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as exc:
+            if hasattr(exc, "response") and exc.response is not None:
+                logger.error("HTTP %s from %s | body: %s", exc.response.status_code, url, exc.response.text)
+            raise
 
     def post_signed(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """
